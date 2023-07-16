@@ -17,9 +17,6 @@ let package = Package(
             name: "VaporProxy",
             dependencies: [
                 .product(name: "Vapor", package: "vapor")
-            ],
-            swiftSettings: [
-                .unsafeFlags(["-cross-module-optimization"], .when(configuration: .release))
             ]
         ),
         .testTarget(name: "VaporProxyTests", dependencies: [
