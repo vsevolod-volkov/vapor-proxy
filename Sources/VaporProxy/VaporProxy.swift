@@ -16,10 +16,32 @@ public final class Proxy: AsyncMiddleware {
     public let targetURL: URL
     fileprivate var httpClient: HTTPClient!
     
-    public init(redirectPathsUnder root: String, to targetURL: URL, configuration: Configuration = .default) {
+    public init(passPathsUnder root: String, to targetURL: URL, configuration: Configuration = .default) {
         self.root = String(root.trimmingSuffix { $0 == "/"})
         self.targetURL = targetURL
         self.configuration = configuration
+    }
+    
+    public static func application(listeningOn port: Int, passPathsUnder root: String, to targetURL: URL, configuration: Configuration = .default, takeDefaultsFrom main: Application? = nil) throws -> Application {
+        let app = Application(Environment(
+            name: "Proxy server on \(port)",
+            arguments: ["vapor", "serve"]
+        ))
+        
+        if let main {
+            app.http.server.configuration = main.http.server.configuration
+            app.http.server.configuration.port = port
+        }
+        
+        app.middleware.use( Proxy(passPathsUnder: root, to: targetURL, configuration: configuration) )
+        
+        try app.start()
+        
+        return app
+    }
+    
+    public static func application(listeningOn port: Int, targetURL: URL, configuration: Configuration = .default, takeDefaultsFrom main: Application? = nil) throws -> Application {
+        try Self.application(listeningOn: port, passPathsUnder: "/", to: targetURL, configuration: configuration, takeDefaultsFrom: main)
     }
 }
 
@@ -181,8 +203,8 @@ extension Proxy {
                 proxyRequestHeaders.add(name: header, value: host)
             case .xForwardedFor:
                 if self.configuration.forwardIP {
-                    if let remoteAddress = request.remoteAddress {
-                        proxyRequestHeaders.add(name: header, value: "\(value), \(remoteAddress.description)")
+                    if let remoteAddress = request.remoteAddress?.ipAddress {
+                        proxyRequestHeaders.add(name: header, value: "\(value), \(remoteAddress)")
                     } else {
                         proxyRequestHeaders.add(name: header, value: value)
                     }
@@ -203,8 +225,9 @@ extension Proxy {
         
         if self.configuration.forwardIP {
             if !proxyRequestHeaders.contains(name: HTTPHeaders.Name.xForwardedFor),
-               let remoteAddress = request.remoteAddress {
-                proxyRequestHeaders.add(name: HTTPHeaders.Name.xForwardedFor, value: remoteAddress.description)
+               let remoteAddress = request.remoteAddress?.ipAddress {
+                
+                proxyRequestHeaders.add(name: HTTPHeaders.Name.xForwardedFor, value: remoteAddress)
             }
             
             if let scheme = request.url.scheme {
