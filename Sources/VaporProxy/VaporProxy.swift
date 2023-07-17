@@ -21,28 +21,6 @@ public final class Proxy: AsyncMiddleware {
         self.targetURL = targetURL
         self.configuration = configuration
     }
-    
-    public static func application(listeningOn port: Int, passPathsUnder root: String, to targetURL: URL, configuration: Configuration = .default, takeDefaultsFrom main: Application? = nil) throws -> Application {
-        let app = Application(Environment(
-            name: "Proxy server on \(port)",
-            arguments: ["vapor", "serve"]
-        ))
-        
-        if let main {
-            app.http.server.configuration = main.http.server.configuration
-            app.http.server.configuration.port = port
-        }
-        
-        app.middleware.use( Proxy(passPathsUnder: root, to: targetURL, configuration: configuration) )
-        
-        try app.start()
-        
-        return app
-    }
-    
-    public static func application(listeningOn port: Int, targetURL: URL, configuration: Configuration = .default, takeDefaultsFrom main: Application? = nil) throws -> Application {
-        try Self.application(listeningOn: port, passPathsUnder: "/", to: targetURL, configuration: configuration, takeDefaultsFrom: main)
-    }
 }
 
 extension Proxy {
@@ -98,14 +76,7 @@ extension Proxy {
     }
     
     public func respond(to request: Request, chainingTo next: AsyncResponder) async throws -> Response {
-        let proxyPath: String
-        if request.url.path == self.root {
-            proxyPath = self.targetURL.path
-        } else if request.url.path.hasPrefix("\(self.root)/") {
-            let startIndex = request.url.path.index(request.url.path.startIndex, offsetBy: self.root.count)
-            let endIndex = request.url.path.endIndex
-            proxyPath = concatWithSlash(self.targetURL.path, request.url.path[startIndex..<endIndex])
-        } else {
+        guard let proxyPath = self.finalPath(requestPath: request.url.path, root: self.root) else {
             return try await next.respond(to: request)
         }
         
@@ -275,21 +246,24 @@ extension Proxy {
             case .setCookie, .setCookie2, .contentLength:
                 break
             case .location:
-                guard let original = URL(string: value, relativeTo: self.targetURL) else {
+                guard let original = URL(string: value, relativeTo: self.targetURL),
+                      original.host == self.targetURL.host,
+                      original.port == self.targetURL.port,
+                      let locationPath = self.finalPath(requestPath: original.path, root: self.targetURL.path) else {
                     responseHeaders.add(name: header, value: value)
                     break
                 }
                 
-                let url = URI(
-                    scheme: original.scheme == nil ? nil : request.url.scheme,
-                    host: original.host == nil ? nil : request.url.host,
-                    port: original.host == nil ? nil : request.url.port,
-                    path: self.concatWithSlash(self.targetURL.path, original.path),
+                let locationURL = URI(
+                    scheme: original.scheme == nil ? nil : request.application.http.server.configuration.tlsConfiguration == nil ? "http" : "https",
+                    host: original.host == nil ? nil : request.application.http.server.configuration.hostname,
+                    port: original.host == nil ? nil : request.application.http.server.configuration.port,
+                    path: self.concatWithSlash(self.root, Self.escape(partiallyEscapedURL: locationPath, withPercents: false)),
                     query: original.query,
                     fragment: original.fragment
                 )
-                
-                responseHeaders.add(name: header, value: self.concatWithSlash(self.targetURL.path, url.string))
+
+                responseHeaders.add(name: header, value: locationURL.string)
             default:
                 guard !Self.hopByHopHeaders.contains(name) else { break }
                 responseHeaders.add(name: header, value: value)
@@ -320,6 +294,18 @@ extension Proxy {
         return responseHeaders
     }
     
+    private func finalPath(requestPath: String, root: String) -> String? {
+        if requestPath == root {
+            return self.targetURL.path
+        } else if requestPath.hasPrefix("\(root)/") {
+            let startIndex = requestPath.index(requestPath.startIndex, offsetBy: root.count)
+            let endIndex = requestPath.endIndex
+            return self.concatWithSlash(self.targetURL.path, requestPath[startIndex..<endIndex])
+        } else {
+            return nil
+        }
+    }
+    
     private func concatWithSlash<S>(_ first: String, _ second: S) -> String where S: StringProtocol {
         var result = first
         result.reserveCapacity(first.count + 1 + second.count)
@@ -347,5 +333,44 @@ extension Proxy {
         } else {
             return host
         }
+    }
+    
+    private static let plainCharacters: CharacterSet = .controlCharacters.union(.whitespaces)
+    private static let unescapedNoPercent: CharacterSet = .urlQueryAllowed.union(["%"])
+    private static let unescapedWithPercent: CharacterSet = .urlQueryAllowed
+    
+    internal static func escape(partiallyEscapedURL url: String, withPercents percent: Bool) -> String {
+        let unescaped = percent ? Self.unescapedWithPercent : Self.unescapedNoPercent
+        
+        func toBeEscaped(_ character: Character) -> Bool {
+            let unicode = character.unicodeScalars.first!
+            
+            if let ascii = character.asciiValue, ascii < 128 {
+                return !unescaped.contains(unicode)
+            } else {
+                return !Self.plainCharacters.contains(unicode)
+            }
+        }
+        
+        guard let firstEscaped = url.firstIndex(where: toBeEscaped) else {
+            return url
+        }
+        
+        var result = String(url[..<firstEscaped])
+        
+        result.reserveCapacity(url.count * 3)
+        
+        let remainder = url[firstEscaped...]
+        
+        var i = remainder.makeIterator()
+        
+        while let character = i.next() {
+            if toBeEscaped(character) {
+                result.append(contentsOf: character.utf8.map { String(format: "%%%02X", $0) }.joined())
+            } else {
+                result.append(character)
+            }
+        }
+        return result
     }
 }
