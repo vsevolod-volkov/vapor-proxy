@@ -75,6 +75,10 @@ extension Proxy {
         }
     }
     
+    public struct HTTPClientKey: StorageKey {
+        public typealias Value = HTTPClient
+    }
+    
     public func respond(to request: Request, chainingTo next: AsyncResponder) async throws -> Response {
         guard let proxyPath = self.finalPath(requestPath: request.url.path, root: self.root) else {
             return try await next.respond(to: request)
@@ -123,6 +127,10 @@ extension Proxy {
             }
             
             self.httpClient = HTTPClient(eventLoopGroupProvider: .createNew, configuration: configuration)
+            
+            request.application.storage.set(Proxy.HTTPClientKey.self, to: self.httpClient) {
+                try $0.syncShutdown()
+            }
         }
         let proxyResponse = try await self.httpClient.execute(request: proxyRequest).get()
 

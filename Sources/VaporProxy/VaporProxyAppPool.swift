@@ -68,7 +68,7 @@ extension Proxy.Pool {
     }
     
     @discardableResult
-    public func unregister(port: Port, shutdown: Bool = false) -> Application? {
+    public func unregister(port: Port, shutdown: Bool = true) -> Application? {
         if shutdown, let application = self.applications[port] {
             application.shutdown()
         }
