@@ -57,6 +57,20 @@ final class VaporProxyTests: XCTestCase {
             return Response(body: .init(buffer: byteBuffer))
         }
         
+        serverApp.get("echo-header") { request in
+            let query = try ContentConfiguration.global.requireURLDecoder().decode([String: String].self, from: request.url)
+            
+            guard let header = query["header"] else {
+                return Response(status: .badRequest, body: "Need header field")
+            }
+            
+            if let header = request.headers[header].first {
+                return Response(body: .init(stringLiteral: header))
+            } else {
+                return Response()
+            }
+        }
+        
         try serverApp.start()
 
         proxyApp = try Proxy.application(
@@ -87,7 +101,6 @@ final class VaporProxyTests: XCTestCase {
         defer { try! client.syncShutdown() }
         
         for urlSuffix in testURLSuffixes {
-            print("\(proxyURI)/\(echoMethodPathQueryFragment)\(urlSuffix)")
             let res = try await client.execute(method, url: "\(proxyURI)/\(echoMethodPathQueryFragment)\(urlSuffix)").get()
 
             XCTAssertEqual(res.status, .ok)
@@ -169,6 +182,27 @@ final class VaporProxyTests: XCTestCase {
         
         for test in tests {
             XCTAssertEqual(Proxy.escape(partiallyEscapedURL: test.original, withPercents: test.percent), test.expected)
+        }
+    }
+    
+    func testTransferClientHeader() async throws {
+        let tests: [(header: String, value: String?, expected: String)] = [
+            (header: "Proxy-Authenticate", value: "Proxy-Authenticate value", expected: ""),
+            (header: "X-My-Header",        value: "Value of X-My-Header",     expected: "Value of X-My-Header"),
+            (header: "X-Forwarded-For",    value: nil,                        expected: Self.localhost),
+            (header: "X-Forwarded-For",    value: "1.2.3.4",                  expected: "1.2.3.4, \(Self.localhost)"),
+        ]
+        
+        let client = HTTPClient(eventLoopGroupProvider: .createNew)
+        
+        defer { try! client.syncShutdown() }
+        
+        for test in tests {
+            let request = try HTTPClient.Request(url: "\(proxyURI)/echo-header?header=\(test.header)", method: .GET, headers: test.value == nil ? [:] : [test.header: test.value!])
+            
+            let response = try await client.execute(request: request).get()
+            
+            XCTAssertEqual(response.body?.string ?? "", test.expected)
         }
     }
     
