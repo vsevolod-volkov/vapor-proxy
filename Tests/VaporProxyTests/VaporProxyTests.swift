@@ -71,6 +71,25 @@ final class VaporProxyTests: XCTestCase {
             }
         }
         
+        serverApp.get("return-header") { request in
+            let query = try ContentConfiguration.global.requireURLDecoder().decode([String: String].self, from: request.url)
+            
+            guard let header = query["header"] else {
+                return Response(status: .badRequest, body: "Need header field")
+            }
+            
+            return Response(headers: [
+                header: query["value"] ?? ""
+            ])
+        }
+        
+        serverApp.get("set-coolie") { request in
+            var headers = HTTPHeaders()
+            
+            headers.setCookie = request.headers.cookie
+            
+            return Response(headers: headers)
+        }
         try serverApp.start()
 
         proxyApp = try Proxy.application(
@@ -198,11 +217,86 @@ final class VaporProxyTests: XCTestCase {
         defer { try! client.syncShutdown() }
         
         for test in tests {
-            let request = try HTTPClient.Request(url: "\(proxyURI)/echo-header?header=\(test.header)", method: .GET, headers: test.value == nil ? [:] : [test.header: test.value!])
+            var uri = URI("\(proxyURI)/echo-header")
+            try ContentConfiguration.global.requireURLEncoder().encode([
+                "header": test.header,
+            ], to: &uri)
+            let request = try HTTPClient.Request(url: uri.string, method: .GET, headers: test.value == nil ? [:] : [test.header: test.value!])
             
             let response = try await client.execute(request: request).get()
             
             XCTAssertEqual(response.body?.string ?? "", test.expected)
+        }
+    }
+    
+    func testTransferServerHeader() async throws {
+        let tests: [(header: String, value: String, expected: String)] = [
+            (header: "X-My-Header",        value: "Value of X-My-Header",     expected: "Value of X-My-Header"),
+        ]
+        
+        let client = HTTPClient(eventLoopGroupProvider: .createNew)
+        
+        defer { try! client.syncShutdown() }
+        
+        for test in tests {
+            var uri = URI("\(proxyURI)/return-header")
+            try ContentConfiguration.global.requireURLEncoder().encode([
+                "header": test.header,
+                "value": test.value,
+            ], to: &uri)
+            
+            let response = try await client.get(url: uri.string).get()
+            
+            XCTAssertEqual(response.headers[test.header], [test.expected])
+        }
+    }
+    
+    func testCookieHeader() async throws {
+        let tests: [(cookie: String, value: HTTPCookies.Value)] = [
+            (cookie: "My-Cookue",          value: "My-Cookue value"),
+            (cookie: "My-Cookue",          value: .init(string: "VaLuE", expires: Date().addingTimeInterval(86400), domain: "some.domain.org", path: "/proxyMe/aome/path/")),
+            (cookie: "My-Cookue",          value: .init(string: "xxx", path: "/proxyMe/aome/path/", isHTTPOnly: true)),
+        ]
+        
+        let client = HTTPClient(eventLoopGroupProvider: .createNew)
+        
+        defer { try! client.syncShutdown() }
+        
+        for test in tests {
+            let uri = URI("\(proxyURI)/set-coolie")
+            var headers = HTTPHeaders()
+            headers.cookie = [
+                test.cookie: test.value,
+            ]
+            let request = try HTTPClient.Request(url: uri.string, method: .GET, headers: headers)
+            
+            let response = try await client.execute(request: request).get()
+            
+            XCTAssertEqual(response.headers.setCookie?[test.cookie]?.string ?? .init(), test.value.string)
+        }
+    }
+    
+    func testConcurrentCookies() async throws {
+        let count = 100
+
+        let uri = URI("\(proxyURI)/set-coolie")
+
+        let client = HTTPClient(eventLoopGroupProvider: .createNew)
+        
+        defer { try! client.syncShutdown() }
+        
+        for i in 1...count {
+            var headers = HTTPHeaders()
+            let cookie = "Test-Cookie-\(i)"
+            let value = HTTPCookies.Value(stringLiteral: "Test-Cookie-\(i)-Value")
+            headers.cookie = [cookie: value]
+            
+            let request = try HTTPClient.Request(url: uri.string, method: .GET, headers: headers)
+
+            let response = try await client.execute(request: request).get()
+            
+            XCTAssertEqual(response.headers.setCookie?[cookie]?.string ?? .init(), value.string)
+            XCTAssertEqual(response.headers.setCookie?.all.keys.map { "\($0)" } , [cookie])
         }
     }
     
