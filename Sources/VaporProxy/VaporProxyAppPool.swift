@@ -59,7 +59,7 @@ extension Proxy.Pool {
         )
     }
     
-    public func register(ports: ClosedRange<Port>, producingTargetURLWith targetURL: (Port) -> URL, configuration: Proxy.ProxyApplicationConfiguration = .default, mapConfigurationWith mapper: ((Port, Proxy.ProxyApplicationConfiguration) throws -> Proxy.ProxyApplicationConfiguration)? = nil) throws {
+    public func register<P>(ports: P, producingTargetURLWith targetURL: (Port) -> URL, configuration: Proxy.ProxyApplicationConfiguration = .default, mapConfigurationWith mapper: ((Port, Proxy.ProxyApplicationConfiguration) throws -> Proxy.ProxyApplicationConfiguration)? = nil) throws where P: Sequence, P.Element == Port {
         try ports.forEach { try self.register(
             port: $0,
             targetURL: targetURL($0),

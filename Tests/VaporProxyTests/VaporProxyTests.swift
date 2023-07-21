@@ -305,8 +305,9 @@ final class VaporProxyTests: XCTestCase {
         
         try pool.register(port: 3030, targetURL: URL(string: "http://\(Self.localhost):\(Self.serverPort)")!)
         
-        try pool.register(ports: 3031...3039, producingTargetURLWith: { _ in URL(string: "http://\(Self.localhost):\(Self.serverPort)")! })
-        
+        try pool.register(ports: 3031...3036, producingTargetURLWith: { _ in URL(string: "http://\(Self.localhost):\(Self.serverPort)")! })
+        try pool.register(ports: [3037, 3038, 3039], producingTargetURLWith: { _ in URL(string: "http://\(Self.localhost):\(Self.serverPort)")! })
+
         let client = HTTPClient(eventLoopGroupProvider: .createNew)
         
         defer { try! client.syncShutdown() }
