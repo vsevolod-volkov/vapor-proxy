@@ -24,7 +24,7 @@ public final class Proxy: AsyncMiddleware {
 }
 
 extension Proxy {
-    public struct Configuration {
+    public struct Configuration: Equatable {
         /// Enable proxy request logging
         public var log: Bool
         

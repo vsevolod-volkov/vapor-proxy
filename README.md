@@ -68,3 +68,17 @@ Add to your swift module:
       try pool.register(ports: [5432, 2345]) {
          URL(string: "http://destination.com:\(10_000 + $0)/destination-path")!
       }
+
+      // Unregister signle port
+      pool.unregister(port: 1234)
+
+      // Unregister port range
+      pool.unregister(port: 1234...4321)
+
+      // Automatically register new ports,
+      //  unregister unused ports and reinitialize
+      //  ports with changed configuration
+
+      try pool.set(proxyPortsTo: 1234...4321) {
+            _ in URL(string: "http://\(Self.localhost):\(Self.serverPort)")!
+      }

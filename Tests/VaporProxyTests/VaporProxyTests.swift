@@ -10,7 +10,7 @@ final class VaporProxyTests: XCTestCase {
     static let secondProxyPort = 3002
     static let localhost = "127.0.0.1"
     let proxyURI: URI = "http://\(localhost):\(proxyPort)/proxyMe"
-
+    
     let echoMethodPathQueryFragment = "echo-method-path-query-fragment"
     
     override func setUp() async throws {
@@ -92,7 +92,7 @@ final class VaporProxyTests: XCTestCase {
             return Response(headers: headers)
         }
         try serverApp.start()
-
+        
         proxyApp = try Proxy.application(
             listeningOn: Self.proxyPort,
             passPathsUnder: "/proxyMe",
@@ -122,7 +122,7 @@ final class VaporProxyTests: XCTestCase {
         
         for urlSuffix in testURLSuffixes {
             let res = try await client.execute(method, url: "\(proxyURI)/\(echoMethodPathQueryFragment)\(urlSuffix)").get()
-
+            
             XCTAssertEqual(res.status, .ok)
             if let body = res.body?.string {
                 XCTAssertEqual(body, "\(method.string):\(urlSuffix)")
@@ -163,7 +163,7 @@ final class VaporProxyTests: XCTestCase {
             var request = try HTTPClient.Request(url: sourceURL, method: .GET)
             
             request.headers.add(name: "X-Proxy-Test-Target", value: redirect.target)
-
+            
             let res = try await client.execute(request: request).get()
             print(res)
             XCTAssertEqual(res.status, .temporaryRedirect)
@@ -279,9 +279,9 @@ final class VaporProxyTests: XCTestCase {
     
     func testConcurrentCookies() async throws {
         let count = 100
-
+        
         let uri = URI("\(proxyURI)/set-coolie")
-
+        
         let client = HTTPClient(eventLoopGroupProvider: .createNew)
         
         defer { try! client.syncShutdown() }
@@ -293,7 +293,7 @@ final class VaporProxyTests: XCTestCase {
             headers.cookie = [cookie: value]
             
             let request = try HTTPClient.Request(url: uri.string, method: .GET, headers: headers)
-
+            
             let response = try await client.execute(request: request).get()
             
             XCTAssertEqual(response.headers.setCookie?[cookie]?.string ?? .init(), value.string)
@@ -310,7 +310,7 @@ final class VaporProxyTests: XCTestCase {
         )
         
         defer { proxyApp.shutdown() }
-
+        
         let client = HTTPClient(eventLoopGroupProvider: .createNew)
         
         defer { try! client.syncShutdown() }
@@ -327,16 +327,16 @@ final class VaporProxyTests: XCTestCase {
         
         try pool.register(ports: 3031...3036, producingTargetURLWith: { _ in URL(string: "http://\(Self.localhost):\(Self.serverPort)")! })
         try pool.register(ports: [3037, 3038, 3039], producingTargetURLWith: { _ in URL(string: "http://\(Self.localhost):\(Self.serverPort)")! })
-
+        
         let client = HTTPClient(eventLoopGroupProvider: .createNew)
         
         defer { try! client.syncShutdown() }
-
+        
         for port in 3030...3039 {
             let sourceUri: URI = "http://\(Self.localhost):\(port)"
             let urlSuffix = "/test-for-port-\(port)"
             let res = try await client.get(url: "\(sourceUri)/\(echoMethodPathQueryFragment)\(urlSuffix)").get()
-
+            
             XCTAssertEqual(res.status, .ok)
             if let body = res.body?.string {
                 XCTAssertEqual(body, "GET:\(urlSuffix)")
@@ -347,11 +347,32 @@ final class VaporProxyTests: XCTestCase {
         
         let port = 3035
         pool.unregister(port: port)
-
+        
         let quickClient = HTTPClient(eventLoopGroupProvider: .createNew, configuration: .init(timeout: .init(connect: .seconds(1))))
         
         defer { try! quickClient.syncShutdown() }
-
+        
         XCTAssertThrowsError(try quickClient.get(url: "http://\(Self.localhost):\(port)/\(echoMethodPathQueryFragment)/FAILURE").wait())
+    }
+    
+    func testPoolSet() async throws {
+        let pool = Proxy.Pool()
+        
+        let configuration1: Proxy.ProxyApplicationConfiguration = .default
+        let configuration2: Proxy.ProxyApplicationConfiguration = .init(root: "/root")
+
+        try pool.register(ports: 3030...3039, producingTargetURLWith: { _ in URL(string: "http://\(Self.localhost):\(Self.serverPort)")! }, configuration: configuration1)
+        
+        for (_, proxyApp) in pool.applications {
+            XCTAssertEqual(proxyApp.configuration, configuration1)
+        }
+
+        try pool.set(proxyPortsTo: 3030...3039, producingTargetURLWith: { _ in URL(string: "http://\(Self.localhost):\(Self.serverPort)")! }, mapConfigurationWith: { port, configuration in
+            port % 2 == 0 ? configuration1 : configuration2
+        })
+
+        for (port, proxyApp) in pool.applications {
+            XCTAssertEqual(proxyApp.configuration, port % 2 == 0 ? configuration1 : configuration2)
+        }
     }
 }
