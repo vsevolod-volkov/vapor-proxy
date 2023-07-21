@@ -7,6 +7,7 @@ final class VaporProxyTests: XCTestCase {
     
     static let serverPort = 3000
     static let proxyPort = 3001
+    static let secondProxyPort = 3002
     static let localhost = "127.0.0.1"
     let proxyURI: URI = "http://\(localhost):\(proxyPort)/proxyMe"
 
@@ -298,6 +299,25 @@ final class VaporProxyTests: XCTestCase {
             XCTAssertEqual(response.headers.setCookie?[cookie]?.string ?? .init(), value.string)
             XCTAssertEqual(response.headers.setCookie?.all.keys.map { "\($0)" } , [cookie])
         }
+    }
+    
+    func testPreserveHost() async throws {
+        let proxyApp = try Proxy.application(
+            listeningOn: Self.secondProxyPort,
+            passPathsUnder: "/proxyMe",
+            to: URL(string: "http://\(Self.localhost):\(Self.serverPort)")!,
+            configuration: .init(log: true, preserveHost: true)
+        )
+        
+        defer { proxyApp.shutdown() }
+
+        let client = HTTPClient(eventLoopGroupProvider: .createNew)
+        
+        defer { try! client.syncShutdown() }
+        
+        let response = try await client.get(url: "http://\(Self.localhost):\(Self.secondProxyPort)/proxyMe/echo-header?header=Host").get()
+        
+        XCTAssertEqual(response.body?.string ?? "", "\(Self.localhost):\(Self.secondProxyPort)")
     }
     
     func testPool() async throws {

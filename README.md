@@ -21,6 +21,9 @@ Add to your Package.swift:
          ]
       )
 
+Add to your swift module:
+
+      import VaporProxy
 
 ## Basic use cases
 
