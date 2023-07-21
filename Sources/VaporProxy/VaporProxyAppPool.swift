@@ -44,27 +44,33 @@ extension Proxy.Pool {
         case portIsBusy
     }
     
-    public func register(port: Port, targetURL: URL, configuration: Proxy.ProxyApplicationConfiguration = .default) throws {
+    @discardableResult
+    public func register(port: Port, targetURL: URL, configuration: Proxy.ProxyApplicationConfiguration = .default) throws -> Application {
         guard !self.applications.keys.contains(port) else {
             throw ProxyPoolError.portIsBusy
         }
         
+        let application = try Proxy.application(
+            listeningOn: port,
+            passPathsUnder: configuration.root,
+            to: targetURL,
+            configuration: configuration.configuration,
+            takeDefaultsFrom: configuration.mainApplication,
+            start: true
+        )
+        
         self.applications[port] = .init(
-            application: try Proxy.application(
-                listeningOn: port,
-                passPathsUnder: configuration.root,
-                to: targetURL,
-                configuration: configuration.configuration,
-                takeDefaultsFrom: configuration.mainApplication,
-                start: true
-            ),
+            application: application,
             targetURL: targetURL,
             configuration: configuration
         )
+        
+        return application
     }
     
-    public func register<P>(ports: P, producingTargetURLWith targetURL: (Port) -> URL, configuration: Proxy.ProxyApplicationConfiguration = .default, mapConfigurationWith mapper: ((Port, Proxy.ProxyApplicationConfiguration) throws -> Proxy.ProxyApplicationConfiguration)? = nil) throws where P: Sequence, P.Element == Port {
-        try ports.forEach { try self.register(
+    @discardableResult
+    public func register<P>(ports: P, producingTargetURLWith targetURL: (Port) -> URL, configuration: Proxy.ProxyApplicationConfiguration = .default, mapConfigurationWith mapper: ((Port, Proxy.ProxyApplicationConfiguration) throws -> Proxy.ProxyApplicationConfiguration)? = nil) throws -> [Application] where P: Sequence, P.Element == Port {
+        try ports.map { try self.register(
             port: $0,
             targetURL: targetURL($0),
             configuration: mapper?($0, configuration) ?? configuration
@@ -96,7 +102,12 @@ extension Proxy.Pool {
         return result
     }
     
-    public func set<P>(proxyPortsTo ports: P, producingTargetURLWith targetURL: (Port) -> URL, configuration: Proxy.ProxyApplicationConfiguration = .default, mapConfigurationWith mapper: ((Port, Proxy.ProxyApplicationConfiguration) throws -> Proxy.ProxyApplicationConfiguration)? = nil) throws where P: Sequence, P.Element == Port {
+    @discardableResult
+    public func set<P>(proxyPortsTo ports: P, producingTargetURLWith targetURL: (Port) -> URL, configuration: Proxy.ProxyApplicationConfiguration = .default, mapConfigurationWith mapper: ((Port, Proxy.ProxyApplicationConfiguration) throws -> Proxy.ProxyApplicationConfiguration)? = nil) throws -> (new: [Application], removed: [Application], replaced: [Application], unchanged: [Application]) where P: Sequence, P.Element == Port {
+        var result: (new: [Application], removed: [Application], replaced: [Application], unchanged: [Application]) = ([], [], [], [])
+        
+        let initial = self.applications.values.map { $0.application }
+        
         for port in ports {
             let targetURL = targetURL(port)
             let configuration = try mapper?(port, configuration) ?? configuration
@@ -108,22 +119,28 @@ extension Proxy.Pool {
                 }
                     
                 self.unregister(port: port)
+                result.replaced.append(try self.register(
+                    port: port,
+                    targetURL: targetURL,
+                    configuration: configuration
+                ))
+            } else {
+                result.new.append(try self.register(
+                    port: port,
+                    targetURL: targetURL,
+                    configuration: configuration
+                ))
             }
-            
-            try self.register(
-                port: port,
-                targetURL: targetURL,
-                configuration: mapper?(port, configuration) ?? configuration
-            )
         }
         
-        for port in self.applications.keys {
-            if !ports.contains(port) {
-                
-            }
+        result.removed = self.unregister(ports: self.applications.keys.filter { !ports.contains($0) })
+        
+        result.unchanged = initial.filter { app in
+            !result.removed.contains { $0 === app} &&
+            !result.replaced.contains { $0 === app}
         }
         
-        self.unregister(ports: self.applications.keys.filter { !ports.contains($0) })
+        return result
     }
 }
 
