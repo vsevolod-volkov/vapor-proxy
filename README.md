@@ -1,6 +1,6 @@
 # vapor-proxy
 
-Simple proxy framework based for Vapor.
+Simple lightweight proxy [Vapor](https://github.com/vapor/vapor)-based framework.
 
 ## Installation
 
