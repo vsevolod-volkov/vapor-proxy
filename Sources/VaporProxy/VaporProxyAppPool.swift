@@ -104,9 +104,12 @@ extension Proxy.Pool {
     
     @discardableResult
     public func set<P>(proxyPortsTo ports: P, producingTargetURLWith targetURL: (Port) -> URL, configuration: Proxy.ProxyApplicationConfiguration = .default, mapConfigurationWith mapper: ((Port, Proxy.ProxyApplicationConfiguration) throws -> Proxy.ProxyApplicationConfiguration)? = nil) throws -> (new: [Application], removed: [Application], replaced: [Application], unchanged: [Application]) where P: Sequence, P.Element == Port {
-        var result: (new: [Application], removed: [Application], replaced: [Application], unchanged: [Application]) = ([], [], [], [])
-        
-        let initial = self.applications.values.map { $0.application }
+        var result: (new: [Application], removed: [Application], replaced: [Application], unchanged: [Application]) = (
+            new: [],
+            removed: [],
+            replaced: [],
+            unchanged: self.applications.values.map { $0.application }
+        )
         
         for port in ports {
             let targetURL = targetURL(port)
@@ -117,7 +120,9 @@ extension Proxy.Pool {
                     application.configuration == configuration {
                     continue
                 }
-                    
+                
+                result.unchanged.removeAll { $0 === application.application }
+                
                 self.unregister(port: port)
                 result.replaced.append(try self.register(
                     port: port,
@@ -135,11 +140,8 @@ extension Proxy.Pool {
         
         result.removed = self.unregister(ports: self.applications.keys.filter { !ports.contains($0) })
         
-        result.unchanged = initial.filter { app in
-            !result.removed.contains { $0 === app} &&
-            !result.replaced.contains { $0 === app}
-        }
-        
+        result.unchanged.removeAll { app in result.removed.contains { app === $0 } }
+
         return result
     }
 }

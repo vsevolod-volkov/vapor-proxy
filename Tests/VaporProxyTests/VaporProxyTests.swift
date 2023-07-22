@@ -366,10 +366,15 @@ final class VaporProxyTests: XCTestCase {
         for (_, proxyApp) in pool.applications {
             XCTAssertEqual(proxyApp.configuration, configuration1)
         }
-
-        try pool.set(proxyPortsTo: 3030...3039, producingTargetURLWith: { _ in URL(string: "http://\(Self.localhost):\(Self.serverPort)")! }, mapConfigurationWith: { port, configuration in
+        
+        let result = try pool.set(proxyPortsTo: 3032...3040, producingTargetURLWith: { _ in URL(string: "http://\(Self.localhost):\(Self.serverPort)")! }, mapConfigurationWith: { port, configuration in
             port % 2 == 0 ? configuration1 : configuration2
         })
+        
+        XCTAssertEqual(result.new.count, 1)
+        XCTAssertEqual(result.removed.count, 2)
+        XCTAssertEqual(result.replaced.count, 4)
+        XCTAssertEqual(result.unchanged.count, 4)
 
         for (port, proxyApp) in pool.applications {
             XCTAssertEqual(proxyApp.configuration, port % 2 == 0 ? configuration1 : configuration2)
