@@ -10,7 +10,9 @@ import Vapor
 
 extension Proxy {
     public struct ProxyApplicationConfiguration {
+        /// Sets top-level path to access proxied resource
         public var root: String
+        /// Proxy middleware configuration
         public var configuration: Configuration
         public var mainApplication: Application?
         
