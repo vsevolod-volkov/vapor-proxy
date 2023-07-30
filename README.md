@@ -28,60 +28,65 @@ Add to your swift module:
 ## Basic use cases
 
 ### As middleware in your existing application
-      func routes(_ app: Application) throws {
-         app.get { req async in
-            "It works!"
-         }
+``` swift
+func routes(_ app: Application) throws {
+   app.get { req async in
+      "It works!"
+   }
 
-         app.middleware.use( Proxy(
-            passPathsUnder: "/proxy",
-            to: URL(string: "http://destination.com:4321/destination-path")!,
-            configuration: .init(log: true)
-         ))
-      }
+   app.middleware.use( Proxy(
+      passPathsUnder: "/proxy",
+      to: URL(string: "http://destination.com:4321/destination-path")!,
+      configuration: .init(log: true)
+   ))
+}
+```
 
 ### As separate application
-      const proxyApp = try Proxy.application(
-         listeningOn: 1234,
-         passPathsUnder: "/proxy",
-         to: URL(string: "http://destination.com:4321/destination-path")!,
-         configuration: .init(log: true)
-      )
+``` swift
+const proxyApp = try Proxy.application(
+   listeningOn: 1234,
+   passPathsUnder: "/proxy",
+   to: URL(string: "http://destination.com:4321/destination-path")!,
+   configuration: .init(log: true)
+)
 
-      defer { proxyApp.shutdown() }
-
+defer { proxyApp.shutdown() }
+```
 ### As proxy pool
-      let pool = Proxy.Pool()
-      
-      // Register single port
-      try pool.register(
-         port: 1234, 
-         targetURL: URL(string: "http://destination.com:4321/destination-path")!
-      )
-      
-      // Register port range
-      try pool.register(ports: 1234...4321) {
-         URL(string: "http://destination.com:\(10_000 + $0)/destination-path")!
-      }
-      
-      // Register port list
-      try pool.register(ports: [5432, 2345]) {
-         URL(string: "http://destination.com:\(10_000 + $0)/destination-path")!
-      }
+``` swift
+let pool = Proxy.Pool()
 
-      // Unregister signle port
-      pool.unregister(port: 1234)
+// Register single port
+try pool.register(
+   port: 1234, 
+   targetURL: URL(string: "http://destination.com:4321/destination-path")!
+)
 
-      // Unregister port range
-      pool.unregister(port: 1234...4321)
+// Register port range
+try pool.register(ports: 1234...4321) {
+   URL(string: "http://destination.com:\(10_000 + $0)/destination-path")!
+}
 
-      // Automatically register new ports,
-      //  unregister unused ports and reinitialize
-      //  ports with changed configuration
+// Register port list
+try pool.register(ports: [5432, 2345]) {
+   URL(string: "http://destination.com:\(10_000 + $0)/destination-path")!
+}
 
-      try pool.set(proxyPortsTo: 1234...4321) {
-            _ in URL(string: "http://\(Self.localhost):\(Self.serverPort)")!
-      }
+// Unregister signle port
+pool.unregister(port: 1234)
+
+// Unregister port range
+pool.unregister(port: 1234...4321)
+
+// Automatically register new ports,
+//  unregister unused ports and reinitialize
+//  ports with changed configuration
+
+try pool.set(proxyPortsTo: 1234...4321) {
+   URL(string: "http://destination.com:\(10_000 + $0)/destination-path")!
+}
+```
 
 ## Proxy configuration
 
