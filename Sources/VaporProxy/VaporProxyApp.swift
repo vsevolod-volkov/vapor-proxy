@@ -9,6 +9,10 @@ import Foundation
 import Vapor
 
 extension Proxy {
+    public enum ProxyError: Error {
+        case mainApplicationNotStarted
+    }
+    
     public static func application(listeningOn port: Int, passPathsUnder root: String, to targetURL: URL, configuration: Configuration = .default, takeDefaultsFrom main: Application? = nil, start: Bool = true) throws -> Application {
         let app = Application(Environment(
             name: "Proxy server on \(port)",
@@ -16,7 +20,12 @@ extension Proxy {
         ))
         
         if let main {
+            guard let localAddress = main.http.server.shared.localAddress,
+                  let hostname = localAddress.ipAddress else {
+                throw ProxyError.mainApplicationNotStarted
+            }
             app.http.server.configuration = main.http.server.configuration
+            app.http.server.configuration.hostname = hostname
             app.http.server.configuration.port = port
             app.sessions.configuration = main.sessions.configuration
         }

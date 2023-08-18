@@ -380,4 +380,24 @@ final class VaporProxyTests: XCTestCase {
             XCTAssertEqual(proxyApp.configuration, port % 2 == 0 ? configuration1 : configuration2)
         }
     }
+    
+    func testDefaultAppConfig() async throws {
+        let app = Application(.init(
+            name: "test",
+            arguments: ["vapor", "serve", "--hostname", "0.0.0.0", "--port", "9999"]
+        ))
+        
+        try app.start()
+        
+        let proxyApp = try Proxy.application(
+            listeningOn: Self.secondProxyPort,
+            passPathsUnder: "/proxyMe",
+            to: URL(string: "http://\(Self.localhost):\(Self.serverPort)")!,
+            configuration: .init(log: true, preserveHost: true),
+            takeDefaultsFrom: app
+        )
+        
+        XCTAssertEqual(proxyApp.http.server.configuration.hostname, app.http.server.shared.localAddress?.ipAddress)
+        XCTAssertEqual(proxyApp.http.server.configuration.port, Self.secondProxyPort)
+    }
 }
