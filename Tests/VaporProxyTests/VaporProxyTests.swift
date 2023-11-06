@@ -389,6 +389,8 @@ final class VaporProxyTests: XCTestCase {
             arguments: ["vapor", "serve", "--hostname", "0.0.0.0", "--port", "9999"]
         ))
         
+        try app.start()
+        
         let proxyApp = try Proxy.application(
             listeningOn: Self.secondProxyPort,
             passPathsUnder: "/proxyMe",

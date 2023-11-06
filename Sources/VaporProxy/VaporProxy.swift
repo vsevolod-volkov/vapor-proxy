@@ -9,6 +9,7 @@ import Foundation
 import Vapor
 import NIOCore
 import NIOSSL
+import VaporForwardedHost
 
 public final class Proxy: AsyncMiddleware {
     public let configuration: Configuration
@@ -267,9 +268,9 @@ extension Proxy {
                 }
                 
                 let locationURL = URI(
-                    scheme: original.scheme == nil ? nil : request.application.http.server.configuration.tlsConfiguration == nil ? "http" : "https",
-                    host: original.host == nil ? nil : request.application.http.server.configuration.hostname,
-                    port: original.host == nil ? nil : request.application.http.server.configuration.port,
+                    scheme: original.scheme == nil ? nil : request.forwardedProto ?? (request.application.http.server.configuration.tlsConfiguration == nil ? "http" : "https"),
+                    host: original.host == nil ? nil : (request.forwardedHost ??  request.application.http.server.configuration.hostname),
+                    port: original.host == nil ? nil : (request.forwardedPort ?? request.application.http.server.configuration.port),
                     path: self.concatWithSlash(self.root, Self.escape(partiallyEscapedURL: locationPath, withPercents: false)),
                     query: original.query,
                     fragment: original.fragment
