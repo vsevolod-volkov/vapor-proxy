@@ -52,6 +52,8 @@ extension Proxy {
         /// Allows to setup HTTP-client domain name translation
         public var dnsOverride: [String: String]?
         
+        public var maxBodySize: ByteCount?
+        
         public static let `default` = Configuration()
         
         public init(log: Bool = false,
@@ -62,7 +64,8 @@ extension Proxy {
                     connectTimeout: Int? = nil,
                     readTimeout: Int? = nil,
                     certificateVerification: CertificateVerification = .fullVerification,
-                    dnsOverride: [String : String]? = nil) {
+                    dnsOverride: [String : String]? = nil,
+                    maxBodySize: ByteCount? = nil) {
             self.log = log
             self.forwardIP = forwardIP
             self.preserveHost = preserveHost
@@ -72,6 +75,7 @@ extension Proxy {
             self.readTimeout = readTimeout
             self.certificateVerification = certificateVerification
             self.dnsOverride = dnsOverride
+            self.maxBodySize = maxBodySize
         }
     }
     
@@ -100,7 +104,7 @@ extension Proxy {
         //RFC 2616 4.3
         if  request.headers.contains(name: .contentLength) ||
             request.headers.contains(name: .transferEncoding) {
-            body = try await request.body.collect().get()
+            body = try await request.body.collect(max: self.configuration.maxBodySize?.value).get()
         } else {
             body = nil
         }

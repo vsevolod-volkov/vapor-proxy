@@ -154,6 +154,12 @@ try pool.set(proxyPortsTo: 1234...4321) {
          <td>nil</td>
          <td>Allows to setup HTTP-client domain name translation</td>
       </tr>
+      <tr>
+         <td>maxBodySize</td>
+         <td>ByteCount?</td>
+         <td>nil</td>
+         <td>Allows to override default Vapor payload size limit</td>
+      </tr>
    </tbody>
 </table>
 

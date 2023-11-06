@@ -19,6 +19,8 @@ final class VaporProxyTests: XCTestCase {
             arguments: ["serverApp", "serve", "--port", "\(Self.serverPort)"]
         ))
         
+        serverApp.routes.defaultMaxBodySize = "100mb"
+        
         for method: HTTPMethod in [.GET, .POST] {
             func process(_ request: Request) async throws -> some AsyncResponseEncodable {
                 var response = request.url.path
@@ -97,7 +99,7 @@ final class VaporProxyTests: XCTestCase {
             listeningOn: Self.proxyPort,
             passPathsUnder: "/proxyMe",
             to: URL(string: "http://\(Self.localhost):\(Self.serverPort)")!,
-            configuration: .init(log: true)
+            configuration: .init(log: true, maxBodySize: serverApp.routes.defaultMaxBodySize)
         )
     }
     
@@ -387,8 +389,6 @@ final class VaporProxyTests: XCTestCase {
             arguments: ["vapor", "serve", "--hostname", "0.0.0.0", "--port", "9999"]
         ))
         
-        try app.start()
-        
         let proxyApp = try Proxy.application(
             listeningOn: Self.secondProxyPort,
             passPathsUnder: "/proxyMe",
@@ -400,4 +400,24 @@ final class VaporProxyTests: XCTestCase {
         XCTAssertEqual(proxyApp.http.server.configuration.hostname, app.http.server.shared.localAddress?.ipAddress)
         XCTAssertEqual(proxyApp.http.server.configuration.port, Self.secondProxyPort)
     }
+    
+    func testLarge() async throws {
+        let client = HTTPClient(eventLoopGroupProvider: .createNew)
+        
+        defer { try! client.syncShutdown() }
+
+        func runTest(url: URL) async throws {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.httpBody = (0..<1000000).map { String(format: "%09d", $0) }.joined(separator: "\n").data(using: .utf8)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            XCTAssertEqual((response as! HTTPURLResponse).statusCode, 200, url.absoluteString)
+            XCTAssertEqual(data.count, request.httpBody!.count, url.absoluteString)
+        }
+        
+        try await runTest(url: URL(string: "http://\(Self.localhost):\(Self.serverPort)/file")!)
+        try await runTest(url: URL(string: "\(proxyURI)/file")!)
+    }
+    
 }
