@@ -99,7 +99,7 @@ extension Proxy {
         )
         
         if self.configuration.log {
-            request.application.logger.log(level: .info, "🔴 \(request.method) \(request.url.path) → \(proxyURL.path)")
+            request.application.logger.log(level: .info, "🔴 \(request.method) \(request.url.path) → \(proxyURL)")
         }
         let body: ByteBuffer?
         //RFC 2616 4.3
